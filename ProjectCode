@@ -1,0 +1,182 @@
+import logging
+import os
+import smtplib
+import requests
+import threading
+import hashlib
+import json
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from sklearn.ensemble import RandomForestClassifier
+import numpy as np
+
+# Incident logging setup
+logging.basicConfig(filename="enhanced_incident.log", level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Threat intelligence feed URL and reputation API endpoint
+THREAT_FEED_URL = "https://example.com/threat-feed"
+REPUTATION_API_URL = "https://reputation-api.com/check"  # Replace with actual URL
+
+# Incident response phases
+INCIDENT_RESPONSE_PHASES = {
+    "identification": "Identifying the type of incident...",
+    "containment": "Containing the threat to minimize impact...",
+    "eradication": "Removing the root cause of the incident...",
+    "recovery": "Restoring services to normal operation...",
+    "rollback": "Rolling back to pre-incident state...",
+    "lessons_learned": "Documenting the incident and extracting lessons."
+}
+
+# Email setup
+SMTP_SERVER = "smtp.example.com"
+SENDER_EMAIL = "incident@company.com"
+RECIPIENT_EMAIL = "security_team@company.com"
+SENDER_PASSWORD = "password"
+
+# Threat prioritization model (Placeholder example)
+def train_threat_prioritization_model():
+    # Placeholder data for simplicity
+    data = np.array([[1, 0, 0], [0, 1, 1], [1, 1, 0]])  # Example features
+    labels = np.array([2, 1, 3])  # Example severity levels
+    model = RandomForestClassifier()
+    model.fit(data, labels)
+    return model
+
+# Train the model
+threat_model = train_threat_prioritization_model()
+
+# Function to prioritize threat using ML model
+def prioritize_threat(features):
+    severity = threat_model.predict([features])[0]
+    return "high" if severity == 3 else "medium" if severity == 2 else "low"
+
+# Function to send email notifications
+def send_email(subject, body):
+    msg = MIMEMultipart()
+    msg['From'] = SENDER_EMAIL
+    msg['To'] = RECIPIENT_EMAIL
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, 587) as server:
+            server.starttls()
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, msg.as_string())
+        logging.info("Notification email sent successfully.")
+    except Exception as e:
+        logging.error(f"Failed to send notification email: {str(e)}")
+
+# Function to fetch threat intelligence and perform reputation check
+def fetch_threat_intelligence_and_reputation(incident_ip):
+    try:
+        response = requests.get(THREAT_FEED_URL)
+        if response.status_code == 200:
+            threat_data = response.json()
+            logging.info("Successfully fetched threat intelligence.")
+        else:
+            threat_data = {}
+            logging.warning(f"Failed to fetch threat intelligence. Status code: {response.status_code}")
+
+        rep_response = requests.get(f"{REPUTATION_API_URL}?ip={incident_ip}")
+        if rep_response.status_code == 200:
+            rep_data = rep_response.json()
+            logging.info(f"Reputation data for {incident_ip}: {rep_data}")
+        else:
+            rep_data = {}
+            logging.warning(f"Failed to fetch reputation data for IP {incident_ip}.")
+
+        return threat_data, rep_data
+    except Exception as e:
+        logging.error(f"Error fetching threat intelligence or reputation data: {str(e)}")
+        return {}, {}
+
+# Function to calculate file integrity checksum
+def calculate_file_checksum(file_path):
+    sha256_hash = hashlib.sha256()
+    try:
+        with open(file_path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        checksum = sha256_hash.hexdigest()
+        logging.info(f"Checksum for {file_path}: {checksum}")
+        return checksum
+    except Exception as e:
+        logging.error(f"Error calculating checksum for {file_path}: {str(e)}")
+        return None
+
+# Function to handle incident using incident type and severity level
+def incident_response(incident_type, severity="medium", incident_ip="0.0.0.0"):
+    logging.info(f"Incident detected: {incident_type} with severity {severity}")
+
+    # Fetch threat intelligence and IP reputation
+    threat_data, rep_data = fetch_threat_intelligence_and_reputation(incident_ip)
+
+    # Incident phases
+    for phase, action in INCIDENT_RESPONSE_PHASES.items():
+        logging.info(f"{action}")
+
+        if phase == "identification":
+            # Perform specific checks based on incident type
+            if incident_type == "malware":
+                logging.info("Malware detected! Executing containment protocols...")
+                calculate_file_checksum("suspicious_file.exe")
+
+            elif incident_type == "data_breach":
+                logging.info("Data breach detected! Locking down compromised assets...")
+                os.system("echo Initiating data breach response...")
+
+            elif incident_type == "DDoS":
+                logging.info("DDoS detected! Activating network throttling...")
+                os.system("echo Enabling rate limiting")
+
+            elif incident_type == "ransomware":
+                logging.info("Ransomware detected! Isolating infected devices...")
+                os.system("echo Quarantine system")
+
+            else:
+                logging.warning(f"Unknown incident type: {incident_type}")
+
+        elif phase == "containment":
+            if severity == "high":
+                logging.info("Applying high-severity containment.")
+                os.system("echo Isolating high-risk network segments")
+
+        elif phase == "eradication":
+            logging.info("Eradicating threat source...")
+            os.system("echo Executing malware removal tools")
+
+        elif phase == "recovery":
+            logging.info("Restoring system integrity...")
+            os.system("echo Rebooting and verifying data integrity")
+
+        elif phase == "rollback":
+            logging.info("Rolling back systems to a clean state...")
+            os.system("echo Rolling back to latest clean backup")
+
+        elif phase == "lessons_learned":
+            with open("enhanced_incident_report.txt", "a") as f:
+                f.write(f"Incident: {incident_type}, Severity: {severity}, IP: {incident_ip}, Timestamp: {datetime.now()}\n")
+            send_email(f"Incident Report: {incident_type}", f"Incident of type {incident_type} with severity {severity} handled. Details in incident log.")
+
+# Using a ThreadPoolExecutor for efficient parallel incident handling
+def handle_multiple_incidents(incidents):
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = []
+        for inc in incidents:
+            futures.append(executor.submit(incident_response, inc['type'], inc['severity'], inc['ip']))
+
+        for future in futures:
+            future.result()
+
+# Test cases
+incident_list = [
+    {"type": "malware", "severity": prioritize_threat([1, 0, 1]), "ip": "192.168.1.10"},
+    {"type": "data_breach", "severity": prioritize_threat([0, 1, 1]), "ip": "192.168.1.20"},
+    {"type": "DDoS", "severity": prioritize_threat([1, 1, 1]), "ip": "192.168.1.30"},
+    {"type": "ransomware", "severity": prioritize_threat([1, 1, 0]), "ip": "192.168.1.40"}
+]
+
+handle_multiple_incidents(incident_list)
